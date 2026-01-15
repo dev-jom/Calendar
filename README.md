@@ -22,13 +22,7 @@ Dentro do workspace, execute: cd /var/www/Calendar
 cp .env.example .env
 
 4- Configurar o banco de dados no arquivo .env:
-Altere as seguintes linhas no arquivo .env:
-DB_CONNECTION=pgsql
-DB_HOST=postgres
-DB_PORT=5432
-DB_DATABASE=calendar
-DB_USERNAME=default
-DB_PASSWORD=secret
+
 
 5- Criar o banco de dados no PostgreSQL:
 Em outro terminal (fora do container): sudo docker compose exec postgres psql -U default -c "CREATE DATABASE calendar;"
