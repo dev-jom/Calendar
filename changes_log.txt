@@ -1,0 +1,64 @@
+Alterações realizadas no projeto "Calendar"
+Data inicial dos trabalhos: 2026-01-15
+
+Resumo das modificações feitas pelo assistente (cronológico):
+
+1) Adição de views
+ - resources/views/calendar.blade.php
+   * Adicionada view completa do calendário com HTML/CSS e JavaScript para interações (modal, choice modal, previews, salvar notas).
+   * Estilos em tema escuro e responsividade básica.
+   * Comportamento: clique em célula abre modal de escolha, permite adicionar/editar/excluir notas via chamadas /note/*.
+
+ - resources/views/task_test.blade.php
+   * Adicionada view para criação/edição de "Teste de Tarefa" (form básico e botão de exclusão via fetch).
+
+2) Rotas e APIs de preview
+ - routes/web.php
+   * Foi preservada a rota raiz existente e adicionadas rotas de preview:
+       /preview/calendar -> exibe a view calendar (carrega notes/tests da session para persistência durante preview)
+       /preview/task-test/{date} -> exibe a view task_test para uma data
+   * Adicionadas rotas API de preview (armazenamento temporário em session):
+       GET /note/{date}            - retorna notes/tests do dia (JSON)
+       GET /note/{date}/{id}       - retorna única nota
+       POST /note/{date}           - cria ou atualiza nota (salva em session)
+       DELETE /note/{id}           - exclui nota (session)
+       POST /task-test/{date}      - cria teste (session)
+       PUT /task-test/{id}         - atualiza teste (session)
+       DELETE /task-test/{id}      - exclui teste (session)
+       GET /task-test/{id}/edit    - retorna view task_test preenchida (session)
+   * Racional: evitar 404 ao usar o frontend preview e permitir testar funcionalidades sem DB.
+
+3) Ajustes iterativos em calendar.blade.php
+ - Corrigidos erros ao tratar notas/tests vindos da session (arrays) ou de collections:
+     * Substituídos usos de ->first() e ->count() por verificações que suportam arrays e collections.
+     * Evitar chamadas a propriedades de arrays (p.ex. $first->content) — agora lê tanto $first['content'] quanto $first->content.
+ - Removido botão "Teste de Tarefa" do choice modal e handlers JS relacionados (conforme solicitado).
+ - Renomeado o botão "Bloco de Notas" para "Adicionar nota".
+ - Implementada exibição das notas diretamente na célula do calendário:
+     * Inicialmente exibido como badge compacto; depois alterado para empilhar os títulos (uma linha por nota).
+     * Trata arrays e collections, e exibe até 5 títulos por célula (valor usado: 5) com truncamento.
+ - Ajustes de CSS para evitar quebras e sobreposição (estilos .day-notes e .day-note-line).
+
+4) Ajustes em task_test.blade.php
+ - Removido o campo "Teste da Tarefa" conforme pedido.
+ - Mantido formulário para criação/edição, botão de exclusão via fetch.
+
+5) Correções de estabilidade e UX
+ - O preview do calendário agora carrega preview_notes e preview_tests da session, garantindo que as notas salvas no preview persistam após reload.
+ - Tratamento de erros nas chamadas fetch: mensagens de console e feedback no modal.
+
+Observações e próximos passos sugeridos (opcionais):
+ - Se quiser, posso commitar essas mudanças em um commit git com mensagem resumida.
+ - Também posso remover as rotas de preview e APIs temporárias, ou integrá-las aos controllers reais quando o backend estiver pronto.
+ - Posso ajustar quantos títulos aparecem por célula (atualmente até 5), cores ou dimensões do badge.
+
+Lista de arquivos afetados (paths relativos):
+ - resources/views/calendar.blade.php (criado + várias edições)
+ - resources/views/task_test.blade.php (criado + pequena edição)
+ - routes/web.php (modificado: rotas preview + APIs em session)
+
+Se quiser um diff linha-a-linha ou um commit Git, eu posso gerar e aplicar também.
+
+--- Fim do relatório ---
+
+Arquivo gerado automaticamente pelo assistente.
