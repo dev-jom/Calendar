@@ -6,12 +6,38 @@ use App\Models\Note;
 use App\Http\Controllers\NoteController;
 
 Route::get('/', function () {
-    return view('welcome');
+    $firstOfMonth = Carbon::now()->startOfMonth();
+    $start = (clone $firstOfMonth)->startOfWeek();
+    $weeks = [];
+    for ($w = 0; $w < 6; $w++) {
+        $week = [];
+        for ($d = 0; $d < 7; $d++) {
+            $week[] = (clone $start)->addDays($w * 7 + $d);
+        }
+        $weeks[] = $week;
+    }
+    $startDate = $weeks[0][0]->format('Y-m-d');
+    $endDate = $weeks[5][6]->format('Y-m-d');
+    $notesCollection = Note::whereBetween('date', [$startDate, $endDate])->orderBy('date')->orderBy('created_at')->get()->groupBy(function($n){ return $n->date->format('Y-m-d'); });
+    $notes = $notesCollection->toArray();
+    $tests = session('preview_tests', []);
+    return view('calendar', compact('firstOfMonth','weeks','notes','tests'));
 });
 
 // Preview routes to view the new blades locally
 Route::get('/preview/calendar', function () {
-    $firstOfMonth = Carbon::now()->startOfMonth();
+    // allow browsing by query params ?month=MM&year=YYYY for preview
+    $m = request()->get('month');
+    $y = request()->get('year');
+    if ($m && $y) {
+        try {
+            $firstOfMonth = Carbon::createFromDate((int)$y, (int)$m, 1)->startOfMonth();
+        } catch (Exception $e) {
+            $firstOfMonth = Carbon::now()->startOfMonth();
+        }
+    } else {
+        $firstOfMonth = Carbon::now()->startOfMonth();
+    }
     $start = (clone $firstOfMonth)->startOfWeek();
     $weeks = [];
     for ($w = 0; $w < 6; $w++) {
@@ -28,7 +54,7 @@ Route::get('/preview/calendar', function () {
     $notes = $notesCollection->toArray();
     $tests = session('preview_tests', []);
     return view('calendar', compact('firstOfMonth','weeks','notes','tests'));
-});
+})->name('calendar.index');
 
 Route::get('/preview/task-test/{date}', function ($date) {
     $task = null;
