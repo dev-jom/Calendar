@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="pt-br">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -18,8 +18,11 @@
         .today{background:#111;border-radius:50%;width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;color:#fff}
         .note-badge{display:block;background:#1a1a1a;color:#9f9;height:auto;padding:4px;border-radius:4px;margin-top:28px;font-size:13px}
         /* stacked note titles inside calendar cell */
-        .day-notes{position:absolute;top:30px;left:8px;display:flex;flex-direction:column;gap:6px;max-width:calc(100% - 16px);max-height:84px;overflow:hidden}
-        .day-note-line{background:#111;color:#9f9;padding:6px 8px;border-radius:6px;font-size:12px;line-height:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;box-shadow:0 1px 0 rgba(255,255,255,0.03)}
+        /* use top+bottom to reserve space and allow the +N badge to stick to the bottom */
+        .day-notes{position:absolute;top:36px;left:8px;right:8px;bottom:10px;display:flex;flex-direction:column;gap:6px;max-width:calc(100% - 16px);overflow:hidden}
+        .day-note-line{background:#3e3e3e52;color:#a37bcc;padding:6px 8px;border-radius:0px;font-size:12px;line-height:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;box-shadow:0 1px 0 rgba(255,255,255,0.03);width:100%}
+        /* push the more badge to the bottom of the .day-notes area without changing DOM order */
+        .more-badge{background:#111;color:#ccc;padding:1px 54px;border-radius:0px;font-size:10px;display:inline-block;margin-top:auto;border:1px solid #222}
         .test-badge{display:block;background:#111;color:#9bf;height:auto;padding:4px;border-radius:4px;margin-top:6px;font-size:12px}
         .cell-link{display:block;height:100%;cursor:pointer}
             
@@ -88,10 +91,17 @@
                                                     $titles = array_values(array_filter($titles));
                                                 @endphp
                                                 @if(!empty($titles))
+                                                    @php
+                                                        $visible = array_slice($titles, 0, 3);
+                                                        $more = max(0, count($titles) - 3);
+                                                    @endphp
                                                     <div class="day-notes">
-                                                        @foreach(array_slice($titles,0,5) as $t)
+                                                        @foreach($visible as $t)
                                                             <div class="day-note-line">{{ Str::limit($t, 60) }}</div>
                                                         @endforeach
+                                                        @if($more > 0)
+                                                            <div class="more-badge">+{{ $more }} mais</div>
+                                                        @endif
                                                     </div>
                                                 @endif
                                             @endif
@@ -215,7 +225,9 @@
                     parts.push('<div style="margin-top:6px;margin-bottom:8px;color:#ddd"><strong>Notas</strong></div>');
                     data.notes.forEach(n => {
                         const created = n.created_at ? ` <span style="font-size:11px;color:#666">(${escapeHtml(n.created_at)})</span>` : '';
-                        const item = `<div style="padding:6px 8px;border-bottom:1px solid #111;color:#fff;font-size:13px;display:flex;justify-content:space-between;align-items:flex-start"><div style="flex:1">${escapeHtml(n.content || '')}${created}</div><div style="margin-left:8px"><button data-id="${n.id}" data-date="${dateStr}" class="edit-note-inline">Editar</button> <button data-id="${n.id}" class="delete-note-inline" style="background:#600">Excluir</button></div></div>`;
+                        const title = n.title || n.content || '(sem título)';
+                        const short = truncate(title, 80);
+                        const item = `<div style="padding:6px 8px;border-bottom:1px solid #111;color:#fff;font-size:13px;display:flex;justify-content:space-between;align-items:flex-start"><div style="flex:1">${escapeHtml(short)}${created}</div><div style="margin-left:8px"><button data-id="${n.id}" data-date="${dateStr}" class="edit-note-inline">Editar</button> <button data-id="${n.id}" class="delete-note-inline" style="background:#600">Excluir</button></div></div>`;
                         parts.push(item);
                     });
                 }
@@ -244,7 +256,9 @@
                 let html = '';
                     notes.forEach(n => {
                         const created = n.created_at ? ` <div style="font-size:11px;color:#666;margin-top:6px">${escapeHtml(n.created_at)}</div>` : '';
-                        html += `<div style="padding:6px 8px;border-bottom:1px solid #111;display:flex;justify-content:space-between;align-items:flex-start"><div style="flex:1;color:#ddd;font-size:13px">${escapeHtml(n.title || n.content || '')}${created}</div><div style="margin-left:8px"><button data-id="${n.id}" class="edit-note">Editar</button> <button data-id="${n.id}" class="delete-note" style="margin-left:6px;background:#600">Excluir</button></div></div>`;
+                        const title = n.title || n.content || '(sem título)';
+                        const short = truncate(title, 120);
+                        html += `<div style="padding:6px 8px;border-bottom:1px solid #111;display:flex;justify-content:space-between;align-items:flex-start"><div style="flex:1;color:#ddd;font-size:13px">${escapeHtml(short)}${created}</div><div style="margin-left:8px"><button data-id="${n.id}" class="edit-note">Editar</button> <button data-id="${n.id}" class="delete-note" style="margin-left:6px;background:#600">Excluir</button></div></div>`;
                 });
                 list.innerHTML = html;
                 // attach edit handlers
