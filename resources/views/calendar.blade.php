@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Calendar</title>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
     <style>
         /* Black & white theme */
         html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui, Arial}
@@ -31,6 +32,7 @@
         .modal .card{background:#000;border:1px solid #333;padding:18px;width:600px;color:#fff;border-radius:8px}
         textarea{width:100%;height:220px;background:#000;color:#fff;border:1px solid #333;padding:8px}
         button{background:#222;color:#fff;border:1px solid #444;padding:8px 12px;margin-right:8px}
+        .drag-handle{cursor:move; padding: 0 5px;}
         @media(max-width:700px){table.calendar td{height:90px} .modal .card{width:90%}}
     </style>
 </head>
@@ -51,13 +53,13 @@
     <table class="calendar">
         <thead>
         <tr>
-            <th>Sun</th>
             <th>Mon</th>
             <th>Tue</th>
             <th>Wed</th>
             <th>Thu</th>
             <th>Fri</th>
             <th>Sat</th>
+            <th>Sun</th>
         </tr>
         </thead>
         <tbody>
@@ -223,15 +225,18 @@
                 }
                 if(data.notes && data.notes.length){
                     parts.push('<div style="margin-top:6px;margin-bottom:8px;color:#ddd"><strong>Notas</strong></div>');
+                    let notes_html = '<div id="notes-list">';
                     data.notes.forEach(n => {
                         const created = n.created_at ? ` <span style="font-size:11px;color:#666">(${escapeHtml(n.created_at)})</span>` : '';
                         const title = n.title || n.content || '(sem título)';
                         const short = truncate(title, 80);
-                        const item = `<div style="padding:6px 8px;border-bottom:1px solid #111;color:#fff;font-size:13px;display:flex;justify-content:space-between;align-items:flex-start"><div style="flex:1">${escapeHtml(short)}${created}</div><div style="margin-left:8px"><button data-id="${n.id}" data-date="${dateStr}" class="edit-note-inline">Editar</button> <button data-id="${n.id}" class="delete-note-inline" style="background:#600">Excluir</button></div></div>`;
-                        parts.push(item);
+                        notes_html += `<div data-id="${n.id}" style="padding:6px 8px;border-bottom:1px solid #111;color:#fff;font-size:13px;display:flex;justify-content:space-between;align-items:flex-start"><span class="drag-handle">&#9776;</span><div style="flex:1">${escapeHtml(short)}${created}</div><div style="margin-left:8px"><button data-id="${n.id}" data-date="${dateStr}" class="edit-note-inline">Editar</button> <button data-id="${n.id}" class="delete-note-inline" style="background:#600">Excluir</button></div></div>`;
                     });
+                    notes_html += '</div>';
+                    parts.push(notes_html);
                 }
                 container.innerHTML = parts.length ? parts.join('') : '<div style="color:#999">Sem registros</div>';
+                initSortable();
             }catch(err){ console.error(err); container.innerHTML = `<div style="color:#f66">Erro ao carregar: ${escapeHtml(err.message || String(err))}</div>`; }
         }
 
@@ -332,6 +337,33 @@
                 if(res.ok){ try{ if(editingDate) loadChoicePreviews(editingDate); }catch(e){} window.location.reload(); } else { alert('Erro ao excluir'); }
             }
             });
+
+    function initSortable() {
+        const list = document.getElementById('notes-list');
+        if (!list) return;
+        new Sortable(list, {
+            handle: '.drag-handle',
+            animation: 150,
+            onEnd: async function (evt) {
+                const noteIds = Array.from(list.children).map(item => item.dataset.id);
+                const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+                const res = await fetch('/notes/reorder-all', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': token,
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({ noteIds: noteIds })
+                });
+                if (res.ok) {
+                    window.location.reload();
+                } else {
+                    alert('Erro ao reordenar');
+                }
+            }
+        });
+    }
 
     // preview button removed; previews are inline in the choice modal
 

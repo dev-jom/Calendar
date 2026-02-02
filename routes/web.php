@@ -6,7 +6,18 @@ use App\Models\Note;
 use App\Http\Controllers\NoteController;
 
 Route::get('/', function () {
-    $firstOfMonth = Carbon::now()->startOfMonth();
+    // allow browsing by query params ?month=MM&year=YYYY similar to the preview route
+    $m = request()->get('month');
+    $y = request()->get('year');
+    if ($m && $y) {
+        try {
+            $firstOfMonth = Carbon::createFromDate((int)$y, (int)$m, 1)->startOfMonth();
+        } catch (Exception $e) {
+            $firstOfMonth = Carbon::now()->startOfMonth();
+        }
+    } else {
+        $firstOfMonth = Carbon::now()->startOfMonth();
+    }
     $start = (clone $firstOfMonth)->startOfWeek();
     $weeks = [];
     for ($w = 0; $w < 6; $w++) {
@@ -18,7 +29,7 @@ Route::get('/', function () {
     }
     $startDate = $weeks[0][0]->format('Y-m-d');
     $endDate = $weeks[5][6]->format('Y-m-d');
-    $notesCollection = Note::whereBetween('date', [$startDate, $endDate])->orderBy('date')->orderBy('created_at')->get()->groupBy(function($n){ return $n->date->format('Y-m-d'); });
+    $notesCollection = Note::whereBetween('date', [$startDate, $endDate])->orderBy('date')->orderBy('order')->orderBy('created_at')->get()->groupBy(function($n){ return $n->date->format('Y-m-d'); });
     $notes = $notesCollection->toArray();
     $tests = session('preview_tests', []);
     return view('calendar', compact('firstOfMonth','weeks','notes','tests'));
@@ -50,7 +61,7 @@ Route::get('/preview/calendar', function () {
     // load notes from database for the month so saved items persist
     $startDate = $weeks[0][0]->format('Y-m-d');
     $endDate = $weeks[5][6]->format('Y-m-d');
-    $notesCollection = Note::whereBetween('date', [$startDate, $endDate])->orderBy('date')->orderBy('created_at')->get()->groupBy(function($n){ return $n->date->format('Y-m-d'); });
+    $notesCollection = Note::whereBetween('date', [$startDate, $endDate])->orderBy('date')->orderBy('order')->orderBy('created_at')->get()->groupBy(function($n){ return $n->date->format('Y-m-d'); });
     $notes = $notesCollection->toArray();
     $tests = session('preview_tests', []);
     return view('calendar', compact('firstOfMonth','weeks','notes','tests'));
@@ -66,6 +77,7 @@ Route::get('/note/{date}', [NoteController::class, 'byDate']);
 Route::get('/note/{date}/{id}', [NoteController::class, 'show']);
 Route::post('/note/{date}', [NoteController::class, 'store']);
 Route::delete('/note/{id}', [NoteController::class, 'destroy']);
+Route::post('/notes/reorder-all', [NoteController::class, 'reorderAll']);
 
 // Preview API for task-tests (stored in session)
 Route::post('/task-test/{date}', function ($date) {

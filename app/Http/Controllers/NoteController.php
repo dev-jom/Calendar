@@ -4,13 +4,14 @@ namespace App\Http\Controllers;
 
 use App\Models\Note;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class NoteController extends Controller
 {
     // Return notes and (optionally) tests for a given date
     public function byDate($date)
     {
-        $notes = Note::where('date', $date)->orderBy('created_at')->get();
+        $notes = Note::where('date', $date)->orderBy('order')->orderBy('created_at')->get();
         return response()->json(['notes' => $notes]);
     }
 
@@ -43,6 +44,22 @@ class NoteController extends Controller
         $note = Note::find($id);
         if (!$note) return response()->json(['message' => 'Not found'], 404);
         $note->delete();
+        return response()->json(['ok' => true]);
+    }
+
+    public function reorderAll(Request $request)
+    {
+        $noteIds = $request->input('noteIds');
+        if (!$noteIds) {
+            return response()->json(['message' => 'noteIds is required'], 400);
+        }
+
+        DB::transaction(function () use ($noteIds) {
+            foreach ($noteIds as $index => $noteId) {
+                Note::where('id', $noteId)->update(['order' => $index]);
+            }
+        });
+
         return response()->json(['ok' => true]);
     }
 }
