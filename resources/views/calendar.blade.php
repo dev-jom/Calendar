@@ -163,12 +163,14 @@
     const modalDate = document.getElementById('modalDate');
     let editingDate = null;
     let editingNoteId = null;
+    let orderChanged = false;
 
     // show choice modal first
     document.querySelectorAll('.cell-link').forEach(el => {
         el.addEventListener('click', async (e) => {
             e.preventDefault();
             const date = el.getAttribute('data-date');
+            orderChanged = false;
             document.getElementById('choiceDate').textContent = date;
             // store selected date on modal buttons
             document.getElementById('openNoteBtn').dataset.date = date;
@@ -178,8 +180,31 @@
         });
     });
 
-    document.getElementById('choiceCloseBtn').addEventListener('click', () => {
-        document.getElementById('choiceModal').style.display = 'none';
+    document.getElementById('choiceCloseBtn').addEventListener('click', async () => {
+        if (orderChanged) {
+            const list = document.getElementById('notes-list');
+            if (list) {
+                const noteIds = Array.from(list.children).map(item => item.dataset.id);
+                const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+                const res = await fetch('/notes/reorder-all', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': token,
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({ noteIds: noteIds })
+                });
+                if (res.ok) {
+                    window.location.reload();
+                } else {
+                    alert('Erro ao reordenar');
+                    document.getElementById('choiceModal').style.display = 'none';
+                }
+            }
+        } else {
+            document.getElementById('choiceModal').style.display = 'none';
+        }
     });
 
     document.getElementById('openNoteBtn').addEventListener('click', async (e) => {
@@ -344,23 +369,8 @@
         new Sortable(list, {
             handle: '.drag-handle',
             animation: 150,
-            onEnd: async function (evt) {
-                const noteIds = Array.from(list.children).map(item => item.dataset.id);
-                const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-                const res = await fetch('/notes/reorder-all', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': token,
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify({ noteIds: noteIds })
-                });
-                if (res.ok) {
-                    window.location.reload();
-                } else {
-                    alert('Erro ao reordenar');
-                }
+            onEnd: function (evt) {
+                orderChanged = true;
             }
         });
     }
