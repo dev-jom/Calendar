@@ -35,6 +35,9 @@ Route::get('/', function () {
     return view('calendar', compact('firstOfMonth','weeks','notes','tests'));
 });
 
+// Rota de busca global
+Route::get('/search', [NoteController::class, 'search'])->name('notes.search');
+
 // Preview routes to view the new blades locally
 Route::get('/preview/calendar', function () {
     // allow browsing by query params ?month=MM&year=YYYY for preview

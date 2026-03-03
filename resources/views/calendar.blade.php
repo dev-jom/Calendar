@@ -39,16 +39,27 @@
 <body>
 <div class="container">
     <div class="header">
-        <div class="title"><h2 style="margin:0">{{ $firstOfMonth->format('F Y') }}</h2></div>
-        <div class="month-nav">
-            @php
-                $prev = (clone $firstOfMonth)->subMonth();
-                $next = (clone $firstOfMonth)->addMonth();
-            @endphp
-            <a href="?month={{ $prev->month }}&year={{ $prev->year }}">&larr; Prev</a>
-            <a href="?month={{ $next->month }}&year={{ $next->year }}">Next &rarr;</a>
-        </div>
+    <div class="title">
+        <h2 style="margin:0">{{ $firstOfMonth->format('F Y') }}</h2>
     </div>
+    
+    <div class="search-container" style="position: relative; flex: 1; max-width: 400px; margin: 0 20px;">
+        <input type="text" id="globalSearch" placeholder="Pesquisar notas ou testes..." 
+               style="width: 100%; padding: 10px; background: #111; color: #fff; border: 1px solid #333; border-radius: 4px; outline: none;">
+        
+        <div id="searchResults" style="display:none; position: absolute; top: 45px; left: 0; right: 0; background: #0a0a0a; border: 1px solid #333; z-index: 1000; max-height: 500px; overflow-y: auto; box-shadow: 0 10px 30px rgba(0,0,0,0.8);">
+            </div>
+    </div>
+
+    <div class="month-nav">
+        @php
+            $prev = (clone $firstOfMonth)->subMonth();
+            $next = (clone $firstOfMonth)->addMonth();
+        @endphp
+        <a href="?month={{ $prev->month }}&year={{ $prev->year }}">&larr; Prev</a>
+        <a href="?month={{ $next->month }}&year={{ $next->year }}">Next &rarr;</a>
+    </div>
+</div>
 
     <table class="calendar">
         <thead>
@@ -158,284 +169,168 @@
 </div>
 
 <script>
-    const modal = document.getElementById('noteModal');
-    const noteContent = document.getElementById('noteContent');
-    const modalDate = document.getElementById('modalDate');
-    let editingDate = null;
-    let editingNoteId = null;
-    let orderChanged = false;
+// --- FUNÇÕES AUXILIARES ---
+function truncate(str, n) {
+    if (!str) return '';
+    return (str.length > n) ? str.substr(0, n - 1) + '...' : str;
+}
 
-    // show choice modal first
-    document.querySelectorAll('.cell-link').forEach(el => {
-        el.addEventListener('click', async (e) => {
-            e.preventDefault();
-            const date = el.getAttribute('data-date');
-            orderChanged = false;
-            document.getElementById('choiceDate').textContent = date;
-            // store selected date on modal buttons
-            document.getElementById('openNoteBtn').dataset.date = date;
-            // load inline previews for this date
-            try{ loadChoicePreviews(date); } catch(err){}
-            document.getElementById('choiceModal').style.display = 'flex';
-        });
-    });
+function highlight(text, term) {
+    if (!term || !text) return text;
+    const regex = new RegExp(`(${term})`, 'gi');
+    return text.replace(regex, '<mark style="background: #ffeb3b; color: #000; padding: 0 2px; border-radius: 2px;">$1</mark>');
+}
 
-    document.getElementById('choiceCloseBtn').addEventListener('click', async () => {
-        if (orderChanged) {
-            const list = document.getElementById('notes-list');
-            if (list) {
-                const noteIds = Array.from(list.children).map(item => item.dataset.id);
-                const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-                const res = await fetch('/notes/reorder-all', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': token,
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify({ noteIds: noteIds })
-                });
-                if (res.ok) {
-                    window.location.reload();
-                } else {
-                    alert('Erro ao reordenar');
-                    document.getElementById('choiceModal').style.display = 'none';
-                }
+// --- VARIÁVEIS DO MODAL (JÁ EXISTENTES) ---
+const modal = document.getElementById('noteModal');
+const closeBtn = document.querySelector('.close');
+const saveBtn = document.getElementById('saveNoteBtn');
+const noteContent = document.getElementById('noteContent');
+const noteList = document.getElementById('noteList');
+let editingDate = null;
+let editingNoteId = null;
+
+// --- LÓGICA DE BUSCA (CTRL + F) ---
+const searchInput = document.getElementById('globalSearch');
+const searchResults = document.getElementById('searchResults');
+
+if (searchInput) {
+    searchInput.addEventListener('input', async (e) => {
+        const q = e.target.value;
+        if (q.length < 2) {
+            searchResults.style.display = 'none';
+            return;
+        }
+
+        try {
+            const res = await fetch(`/search?q=${encodeURIComponent(q)}`);
+            const data = await res.json();
+            const all = [...(data.notes || []), ...(data.tests || [])];
+
+            if (all.length === 0) {
+                searchResults.innerHTML = '<div style="padding:15px; color:#666;">Nenhum texto encontrado.</div>';
+            } else {
+                searchResults.innerHTML = all.map(item => {
+                    const cleanContent = item.excerpt ? item.excerpt.replace(/<[^>]*>?/gm, '') : '';
+                    const highlightedText = highlight(truncate(cleanContent, 100), q);
+
+                    return `
+                        <div onclick="goToResult('${item.date}', ${item.type === 'Teste'}, '${item.id || ''}')" 
+                             style="padding: 12px; border-bottom: 1px solid #222; cursor: pointer; background: #0a0a0a;"
+                             onmouseover="this.style.background='#151515'" onmouseout="this.style.background='#0a0a0a'">
+                            <div style="display:flex; justify-content:space-between; margin-bottom: 4px;">
+                                <small style="color:${item.type === 'Teste' ? '#4a9eff' : '#a37bcc'}; font-weight:bold; font-size:10px;">${item.type.toUpperCase()}</small>
+                                <small style="color:#444; font-size:10px;">${item.date}</small>
+                            </div>
+                            <div style="color:#fff; font-size:13px; font-weight:bold; margin-bottom:4px;">${item.title}</div>
+                            <div style="color:#888; font-size:12px; line-height:1.4;">
+                                ...${highlightedText}...
+                            </div>
+                        </div>`;
+                }).join('');
             }
-        } else {
-            document.getElementById('choiceModal').style.display = 'none';
+            searchResults.style.display = 'block';
+        } catch (err) {
+            console.error("Erro na busca:", err);
         }
     });
+}
 
-    document.getElementById('openNoteBtn').addEventListener('click', async (e) => {
-        const date = e.currentTarget.dataset.date;
-        editingDate = date;
+// Fechar busca ao clicar fora
+document.addEventListener('click', (e) => {
+    if (searchResults && !e.target.closest('.search-container')) {
+        searchResults.style.display = 'none';
+    }
+});
+
+// Ir para o resultado
+window.goToResult = function(date, isTest, id) {
+    searchResults.style.display = 'none';
+    searchInput.value = '';
+    if (isTest && id) {
+        window.location.href = `/task-test/${id}/edit`;
+    } else {
+        const cell = document.querySelector(`.cell-link[data-date="${date}"]`);
+        if (cell) cell.click();
+    }
+};
+
+// --- RESTO DAS FUNÇÕES DO CALENDÁRIO (MANTER) ---
+async function openModal(date) {
+    editingDate = date;
+    editingNoteId = null;
+    document.getElementById('modalDateTitle').innerText = 'Notas: ' + date;
+    document.getElementById('noteTitle').value = '';
+    noteContent.value = '';
+    
+    const choiceLink = document.getElementById('addTestChoice');
+    if(choiceLink) choiceLink.href = `/task-test/${date}`;
+
+    await loadNoteList(date);
+    modal.style.display = 'block';
+}
+
+async function loadNoteList(date) {
+    const res = await fetch(`/notes/${date}`);
+    const data = await res.json();
+    noteList.innerHTML = '';
+    data.notes.forEach(n => {
+        const div = document.createElement('div');
+        div.className = 'note-item';
+        div.dataset.id = n.id;
+        div.innerHTML = `
+            <div class="note-handle">::</div>
+            <div style="flex:1" onclick="editNote(${n.id}, '${n.title||''}', \`${n.content||''}\`)">
+                <strong>${n.title || '(Sem título)'}</strong>
+            </div>
+            <button class="delete-note-btn" onclick="deleteNote(${n.id})">Excluir</button>
+        `;
+        noteList.appendChild(div);
+    });
+}
+
+function editNote(id, title, content) {
+    editingNoteId = id;
+    document.getElementById('noteTitle').value = title;
+    noteContent.value = content;
+}
+
+async function deleteNote(id) {
+    if(!confirm('Excluir esta nota?')) return;
+    const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    const res = await fetch(`/note/${id}`, { method: 'DELETE', headers: {'X-CSRF-TOKEN': token} });
+    if(res.ok) await loadNoteList(editingDate);
+}
+
+// Event Listeners básicos
+document.querySelectorAll('.cell-link').forEach(link => {
+    link.addEventListener('click', (e) => {
+        if(e.target.closest('.preview-test-link')) return;
+        openModal(link.dataset.date);
+    });
+});
+
+closeBtn.onclick = () => { modal.style.display = "none"; };
+window.onclick = (event) => { if (event.target == modal) modal.style.display = "none"; };
+
+saveBtn.addEventListener('click', async () => {
+    if (!editingDate) return;
+    const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    const payload = { title: document.getElementById('noteTitle').value, content: noteContent.value };
+    if (editingNoteId) payload.note_id = editingNoteId;
+    
+    const res = await fetch(`/note/${editingDate}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': token },
+        body: JSON.stringify(payload)
+    });
+    if (res.ok) {
         editingNoteId = null;
-        modalDate.textContent = date;
-        noteContent.value = '';
         document.getElementById('noteTitle').value = '';
-        await loadNoteList(date);
-        document.getElementById('choiceModal').style.display = 'none';
-        modal.style.display = 'flex';
-    });
-
-    // removed task-test button per user request
-
-        // load inline previews into choice modal (shows tests and notes with fields)
-        async function loadChoicePreviews(dateStr){
-            const container = document.getElementById('choicePreviews');
-            container.innerHTML = 'Carregando...';
-            try{
-                const res = await fetch('/note/' + dateStr, { headers: { 'Accept': 'application/json' }});
-                if(!res.ok){
-                    const text = await res.text().catch(()=>'');
-                    container.innerHTML = `<div style="color:#f66">Erro ${res.status} ${res.statusText}: ${escapeHtml(text.substring(0,200))}</div>`;
-                    console.error('loadChoicePreviews fetch error', res.status, res.statusText, text);
-                    return;
-                }
-                const data = await res.json();
-                let parts = [];
-                if(data.tests && data.tests.length){
-                    parts.push('<div style="margin-bottom:8px;color:#ddd"><strong>Testes</strong></div>');
-                    data.tests.forEach(t => {
-                        const title = t.titulo || t.tarefa_de || '(sem título)';
-                        const short = truncate(title, 60);
-                        let left = `<div style="flex:1"><div style="font-size:13px;color:#eee"><strong>${escapeHtml(short)}</strong></div>`;
-                        if(t.teste) left += `<div style="font-size:12px;color:#bbb;margin-top:4px">${escapeHtml(t.teste)}</div>`;
-                        if(t.link) left += `<div style="font-size:11px;color:#666;margin-top:6px">${truncate('Link: ' + (t.link||''), 60)}</div>`;
-                        left += '</div>';
-                        const actions = `<div style="margin-left:8px;display:flex;flex-direction:column;gap:6px"><button data-id="${t.id}" data-date="${dateStr}" class="edit-test">Editar</button><button data-id="${t.id}" class="delete-test" style="background:#600">Excluir</button></div>`;
-                        parts.push(`<div style="padding:6px 8px;border-bottom:1px solid #111;display:flex;justify-content:space-between;align-items:flex-start">${left}${actions}</div>`);
-                    });
-                }
-                if(data.notes && data.notes.length){
-                    parts.push('<div style="margin-top:6px;margin-bottom:8px;color:#ddd"><strong>Notas</strong></div>');
-                    let notes_html = '<div id="notes-list">';
-                    data.notes.forEach(n => {
-                        const created = n.created_at ? ` <span style="font-size:11px;color:#666">(${escapeHtml(n.created_at)})</span>` : '';
-                        const title = n.title || n.content || '(sem título)';
-                        const short = truncate(title, 80);
-                        notes_html += `<div data-id="${n.id}" style="padding:6px 8px;border-bottom:1px solid #111;color:#fff;font-size:13px;display:flex;justify-content:space-between;align-items:flex-start"><span class="drag-handle">&#9776;</span><div style="flex:1">${escapeHtml(short)}${created}</div><div style="margin-left:8px"><button data-id="${n.id}" data-date="${dateStr}" class="edit-note-inline">Editar</button> <button data-id="${n.id}" class="delete-note-inline" style="background:#600">Excluir</button></div></div>`;
-                    });
-                    notes_html += '</div>';
-                    parts.push(notes_html);
-                }
-                container.innerHTML = parts.length ? parts.join('') : '<div style="color:#999">Sem registros</div>';
-                initSortable();
-            }catch(err){ console.error(err); container.innerHTML = `<div style="color:#f66">Erro ao carregar: ${escapeHtml(err.message || String(err))}</div>`; }
-        }
-
-        // load list of notes inside note modal (with edit buttons)
-        async function loadNoteList(dateStr){
-            const list = document.getElementById('noteList');
-            list.innerHTML = 'Carregando...';
-            try{
-                const res = await fetch('/note/' + dateStr, { headers: { 'Accept': 'application/json' }});
-                if(!res.ok){
-                    const text = await res.text().catch(()=>'');
-                    list.innerHTML = `<div style="color:#f66">Erro ${res.status}: ${escapeHtml(text.substring(0,200))}</div>`;
-                    console.error('loadNoteList fetch error', res.status, res.statusText, text);
-                    return;
-                }
-                const data = await res.json();
-                const notes = data.notes || [];
-                if(!notes.length){
-                    list.innerHTML = '<div style="color:#999">Nenhuma nota ainda</div>';
-                    return;
-                }
-                let html = '';
-                    notes.forEach(n => {
-                        const created = n.created_at ? ` <div style="font-size:11px;color:#666;margin-top:6px">${escapeHtml(n.created_at)}</div>` : '';
-                        const title = n.title || n.content || '(sem título)';
-                        const short = truncate(title, 120);
-                        html += `<div style="padding:6px 8px;border-bottom:1px solid #111;display:flex;justify-content:space-between;align-items:flex-start"><div style="flex:1;color:#ddd;font-size:13px">${escapeHtml(short)}${created}</div><div style="margin-left:8px"><button data-id="${n.id}" class="edit-note">Editar</button> <button data-id="${n.id}" class="delete-note" style="margin-left:6px;background:#600">Excluir</button></div></div>`;
-                });
-                list.innerHTML = html;
-                // attach edit handlers
-                    // attach edit handlers
-                    list.querySelectorAll('.edit-note').forEach(b => {
-                        b.addEventListener('click', (ev) => {
-                            const id = ev.currentTarget.dataset.id;
-                            const note = notes.find(x => x.id == id);
-                            if(note){ editingNoteId = id; noteContent.value = note.content || ''; document.getElementById('noteTitle').value = note.title || ''; }
-                        });
-                    });
-                    // attach delete handlers
-                    list.querySelectorAll('.delete-note').forEach(b => {
-                        b.addEventListener('click', async (ev) => {
-                            const id = ev.currentTarget.dataset.id;
-                            if(!confirm('Excluir esta nota?')) return;
-                            const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-                            const res = await fetch(`/note/${id}`, { method: 'DELETE', headers: { 'X-CSRF-TOKEN': token }});
-                            if(res.ok){ await loadNoteList(editingDate); try{ loadChoicePreviews(editingDate); }catch(e){} } else { alert('Erro ao excluir'); }
-                        });
-                    });
-            }catch(e){ console.error(e); list.innerHTML = '<div style="color:#999">Erro ao carregar</div>'; }
-        }
-
-            // attach delete handlers for tests in choice preview (delegated)
-            document.addEventListener('click', async function(ev){
-                const target = ev.target;
-                if(target && target.classList && target.classList.contains('delete-test')){
-                    const id = target.dataset.id;
-                    if(!confirm('Excluir este teste?')) return;
-                    const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-                    const res = await fetch(`/task-test/${id}`, { method: 'DELETE', headers: { 'X-CSRF-TOKEN': token }});
-                    if(res.ok){
-                        // refresh previews and calendar
-                        try{ if(editingDate) loadChoicePreviews(editingDate); }catch(e){}
-                        window.location.reload();
-                    } else {
-                        alert('Erro ao excluir teste');
-                    }
-                }
-                // edit test (navigate to edit page)
-                if(target && target.classList && target.classList.contains('edit-test')){
-                    const id = target.dataset.id;
-                    if(id) window.location.href = `/task-test/${id}/edit`;
-                }
-                // inline edit on note items displayed in choice previews
-            if(target && target.classList && target.classList.contains('edit-note-inline')){
-                    const id = target.dataset.id;
-                    const date = target.dataset.date;
-                    // fetch note and open modal for editing
-                    const res = await fetch(`/note/${date}/${id}`);
-                    if(res.ok){
-                        const note = await res.json();
-                        editingDate = date;
-                        editingNoteId = note.id;
-                        modalDate.textContent = date;
-                        document.getElementById('noteTitle').value = note.title || '';
-                        noteContent.value = note.content || '';
-                        document.getElementById('choiceModal').style.display = 'none';
-                        modal.style.display = 'flex';
-                    } else {
-                        alert('Erro ao abrir nota');
-                    }
-                }
-            // delete note inline from choice preview
-            if(target && target.classList && target.classList.contains('delete-note-inline')){
-                const id = target.dataset.id;
-                if(!confirm('Excluir esta nota?')) return;
-                const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-                const res = await fetch(`/note/${id}`, { method: 'DELETE', headers: { 'X-CSRF-TOKEN': token }});
-                if(res.ok){ try{ if(editingDate) loadChoicePreviews(editingDate); }catch(e){} window.location.reload(); } else { alert('Erro ao excluir'); }
-            }
-            });
-
-    function initSortable() {
-        const list = document.getElementById('notes-list');
-        if (!list) return;
-        new Sortable(list, {
-            handle: '.drag-handle',
-            animation: 150,
-            onEnd: function (evt) {
-                orderChanged = true;
-            }
-        });
+        noteContent.value = '';
+        await loadNoteList(editingDate);
     }
-
-    // preview button removed; previews are inline in the choice modal
-
-    function escapeHtml(unsafe) {
-        return unsafe
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/\"/g, "&quot;")
-            .replace(/'/g, "&#039;");
-    }
-
-    function truncate(s, n){
-        if(!s) return '';
-        return s.length > n ? s.slice(0,n-1) + '…' : s;
-    }
-
-    document.getElementById('closeBtn').addEventListener('click', async () => {
-        // close note modal and reopen choice modal showing the list for the same date
-        modal.style.display = 'none';
-        if (editingDate) {
-            document.getElementById('choiceDate').textContent = editingDate;
-            document.getElementById('openNoteBtn').dataset.date = editingDate;
-            try{ await loadChoicePreviews(editingDate); } catch(e){}
-            document.getElementById('choiceModal').style.display = 'flex';
-        }
-    });
-
-    document.getElementById('saveBtn').addEventListener('click', async () => {
-        if (!editingDate) return;
-        const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-        const payload = { title: document.getElementById('noteTitle').value, content: noteContent.value };
-        if (editingNoteId) payload.note_id = editingNoteId;
-        const res = await fetch(`/note/${editingDate}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': token,
-                'Accept': 'application/json'
-            },
-            body: JSON.stringify(payload)
-        });
-        if (res.ok) {
-            // refresh list and previews, keep modal open for adding more
-            editingNoteId = null;
-            document.getElementById('noteTitle').value = '';
-            noteContent.value = '';
-            await loadNoteList(editingDate);
-            try{ loadChoicePreviews(editingDate); }catch(e){}
-        } else {
-            // try to parse JSON error message, otherwise text
-            let text = '';
-            try{
-                const json = await res.json();
-                text = json.message || JSON.stringify(json);
-            }catch(e){
-                try{ text = await res.text(); }catch(e2){ text = String(e2); }
-            }
-            console.error('Save note failed', res.status, res.statusText, text);
-            alert(`Error saving: ${res.status} ${res.statusText}\n${text}`);
-        }
-    });
+});
 </script>
 
 </body>

@@ -62,4 +62,41 @@ class NoteController extends Controller
 
         return response()->json(['ok' => true]);
     }
+
+
+    public function search(Request $request)
+{
+    $term = $request->query('q');
+    if (!$term) return response()->json(['notes' => [], 'tests' => []]);
+
+    // Busca focada no campo CONTENT das Notas
+    $notes = \App\Models\Note::where('content', 'LIKE', "%{$term}%")
+                ->get()
+                ->map(fn($n) => [
+                    'type' => 'Nota',
+                    'title' => $n->title ?: 'Sem título',
+                    'excerpt' => $n->content, // Pegamos o conteúdo para o "Ctrl+F"
+                    'date' => $n->date->format('Y-m-d'),
+                ]);
+
+    // Busca nos Testes (Relatório/Conteúdo)
+    $tests = session('preview_tests', []);
+    $foundTests = [];
+    foreach ($tests as $date => $list) {
+        foreach ($list as $t) {
+            $relatorio = $t['relatorio'] ?? '';
+            if (stripos($relatorio, $term) !== false) {
+                $foundTests[] = [
+                    'type' => 'Teste',
+                    'title' => $t['titulo'] ?? $t['tarefa_de'] ?? 'Teste',
+                    'excerpt' => $relatorio,
+                    'date' => $date,
+                    'id' => $t['id'] ?? null
+                ];
+            }
+        }
+    }
+
+    return response()->json(['notes' => $notes, 'tests' => $foundTests]);
+}
 }
