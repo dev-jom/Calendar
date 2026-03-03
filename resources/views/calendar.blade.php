@@ -7,331 +7,200 @@
     <title>Calendar</title>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
     <style>
-        /* Black & white theme */
-        html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui, Arial}
-        .container{max-width:1200px;margin:24px auto;padding:16px}
-        .header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
-        .month-nav a{color:#fff;text-decoration:none;padding:8px;border:1px solid #333;margin:0 6px}
-        table.calendar{width:100%;border-collapse:collapse}
-        table.calendar th{padding:12px;text-align:center;color:#bbb}
-        table.calendar td{width:14.2857%;height:120px;vertical-align:top;border:1px solid #111;padding:8px;position:relative}
-        .day-number{position:absolute;top:6px;left:8px;color:#bbb;font-size:14px}
-        .today{background:#111;border-radius:50%;width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;color:#fff}
-        .note-badge{display:block;background:#1a1a1a;color:#9f9;height:auto;padding:4px;border-radius:4px;margin-top:28px;font-size:13px}
-        /* stacked note titles inside calendar cell */
-        /* use top+bottom to reserve space and allow the +N badge to stick to the bottom */
-        .day-notes{position:absolute;top:36px;left:8px;right:8px;bottom:10px;display:flex;flex-direction:column;gap:6px;max-width:calc(100% - 16px);overflow:hidden}
-        .day-note-line{background:#3e3e3e52;color:#a37bcc;padding:6px 8px;border-radius:0px;font-size:12px;line-height:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;box-shadow:0 1px 0 rgba(255,255,255,0.03);width:100%}
-        /* push the more badge to the bottom of the .day-notes area without changing DOM order */
-        .more-badge{background:#111;color:#ccc;padding:1px 54px;border-radius:0px;font-size:10px;display:inline-block;margin-top:auto;border:1px solid #222}
-        .test-badge{display:block;background:#111;color:#9bf;height:auto;padding:4px;border-radius:4px;margin-top:6px;font-size:12px}
-        .cell-link{display:block;height:100%;cursor:pointer}
-            
-        /* modal */
-        .modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.6);z-index:40}
-        .modal .card{background:#000;border:1px solid #333;padding:18px;width:600px;color:#fff;border-radius:8px}
-        textarea{width:100%;height:220px;background:#000;color:#fff;border:1px solid #333;padding:8px}
-        button{background:#222;color:#fff;border:1px solid #444;padding:8px 12px;margin-right:8px}
-        .drag-handle{cursor:move; padding: 0 5px;}
-        @media(max-width:700px){table.calendar td{height:90px} .modal .card{width:90%}}
+        html, body { height: 100%; margin: 0; background: #000; color: #fff; font-family: system-ui, Arial; }
+        .container { max-width: 1200px; margin: 24px auto; padding: 16px; }
+        .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; gap: 20px; }
+        
+        /* BUSCA */
+        .search-container { position: relative; flex: 1; max-width: 500px; }
+        #globalSearch { width: 100%; padding: 12px; background: #111; color: #fff; border: 1px solid #333; border-radius: 8px; }
+        #searchResults { display: none; position: absolute; top: 50px; left: 0; right: 0; background: #0a0a0a; border: 1px solid #444; z-index: 9999; max-height: 400px; overflow-y: auto; border-radius: 8px; }
+        .search-item { padding: 12px; border-bottom: 1px solid #222; cursor: pointer; }
+
+        /* CALENDÁRIO */
+        table.calendar { width: 100%; border-collapse: collapse; table-layout: fixed; }
+        table.calendar td { width: 14.28%; height: 120px; vertical-align: top; border: 1px solid #222; padding: 10px; cursor: pointer; overflow: hidden; position: relative; }
+        table.calendar td:hover { background: #080808; }
+        .day-number { color: #888; font-size: 14px; margin-bottom: 5px; display: block; }
+
+        /* PREVIEWS (COISAS QUE APARECEM NO CARD) */
+        .cell-content { display: flex; flex-direction: column; gap: 4px; margin-top: 5px; }
+        .note-preview { background: #a37bcc; color: #fff; font-size: 10px; padding: 2px 4px; border-radius: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .test-preview { background: #4a9eff; color: #fff; font-size: 10px; padding: 2px 4px; border-radius: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        /* MODAL CENTRALIZADO */
+        .modal { display: none; position: fixed; z-index: 10000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); align-items: center; justify-content: center; }
+        .modal-content { background: #111; padding: 25px; border: 1px solid #333; width: 95%; max-width: 600px; border-radius: 12px; position: relative; }
+        .close { position: absolute; top: 15px; right: 20px; color: #666; font-size: 24px; cursor: pointer; }
+        #noteTitle, #noteContent { width: 100%; padding: 12px; background: #050505; color: #fff; border: 1px solid #333; border-radius: 6px; margin-bottom: 15px; box-sizing: border-box; font-family: inherit; }
+        .note-item { display: flex; align-items: center; background: #181818; padding: 10px; margin-bottom: 8px; border-radius: 6px; border: 1px solid #222; }
+        .save-btn { background: #fff; color: #000; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-weight: bold; }
     </style>
 </head>
 <body>
+
 <div class="container">
     <div class="header">
-    <div class="title">
-        <h2 style="margin:0">{{ $firstOfMonth->format('F Y') }}</h2>
+        <h2>{{ $firstOfMonth->format('F Y') }}</h2>
+        <div class="search-container">
+            <input type="text" id="globalSearch" placeholder="🔍 Ctrl+F: Buscar em notas ou testes...">
+            <div id="searchResults"></div>
+        </div>
+        <div class="month-nav">
+            <a href="?month={{ $firstOfMonth->copy()->subMonth()->month }}&year={{ $firstOfMonth->copy()->subMonth()->year }}" style="color:#fff; text-decoration:none;">&larr; Ant</a>
+            <a href="?month={{ $firstOfMonth->copy()->addMonth()->month }}&year={{ $firstOfMonth->copy()->addMonth()->year }}" style="color:#fff; text-decoration:none; margin-left:15px;">Próx &rarr;</a>
+        </div>
     </div>
-    
-    <div class="search-container" style="position: relative; flex: 1; max-width: 400px; margin: 0 20px;">
-        <input type="text" id="globalSearch" placeholder="Pesquisar notas ou testes..." 
-               style="width: 100%; padding: 10px; background: #111; color: #fff; border: 1px solid #333; border-radius: 4px; outline: none;">
-        
-        <div id="searchResults" style="display:none; position: absolute; top: 45px; left: 0; right: 0; background: #0a0a0a; border: 1px solid #333; z-index: 1000; max-height: 500px; overflow-y: auto; box-shadow: 0 10px 30px rgba(0,0,0,0.8);">
-            </div>
-    </div>
-
-    <div class="month-nav">
-        @php
-            $prev = (clone $firstOfMonth)->subMonth();
-            $next = (clone $firstOfMonth)->addMonth();
-        @endphp
-        <a href="?month={{ $prev->month }}&year={{ $prev->year }}">&larr; Prev</a>
-        <a href="?month={{ $next->month }}&year={{ $next->year }}">Next &rarr;</a>
-    </div>
-</div>
 
     <table class="calendar">
         <thead>
-        <tr>
-            <th>Mon</th>
-            <th>Tue</th>
-            <th>Wed</th>
-            <th>Thu</th>
-            <th>Fri</th>
-            <th>Sat</th>
-            <th>Sun</th>
-        </tr>
+            <tr><th>Dom</th><th>Seg</th><th>Ter</th><th>Qua</th><th>Qui</th><th>Sex</th><th>Sáb</th></tr>
         </thead>
         <tbody>
-        @foreach($weeks as $week)
+            @foreach($weeks as $week)
             <tr>
                 @foreach($week as $day)
-                    @php $dateStr = $day->format('Y-m-d'); @endphp
-                    <td>
-                        <a class="cell-link" data-date="{{ $dateStr }}">
-                            <div class="day-number">
-                                @if($day->isToday())
-                                    <span class="today">{{ $day->day }}</span>
-                                @else
-                                    {{ $day->day }}
-                                @endif
-                            </div>
-                                            @if(isset($notes[$dateStr]))
-                                                @php
-                                                    $dayNotes = $notes[$dateStr];
-                                                    // build a simple array of titles for arrays or collections
-                                                    $titles = [];
-                                                    if (is_array($dayNotes)) {
-                                                        foreach ($dayNotes as $n) {
-                                                            $titles[] = $n['title'] ?? $n['content'] ?? null;
-                                                        }
-                                                    } else {
-                                                        foreach ($dayNotes as $n) {
-                                                            $titles[] = $n->title ?? $n->content ?? null;
-                                                        }
-                                                    }
-                                                    $titles = array_values(array_filter($titles));
-                                                @endphp
-                                                @if(!empty($titles))
-                                                    @php
-                                                        $visible = array_slice($titles, 0, 3);
-                                                        $more = max(0, count($titles) - 3);
-                                                    @endphp
-                                                    <div class="day-notes">
-                                                        @foreach($visible as $t)
-                                                            <div class="day-note-line">{{ Str::limit($t, 60) }}</div>
-                                                        @endforeach
-                                                        @if($more > 0)
-                                                            <div class="more-badge">+{{ $more }} mais</div>
-                                                        @endif
-                                                    </div>
-                                                @endif
-                                            @endif
-                            @if(isset($tests) && isset($tests[$dateStr]))
-                                @php
-                                    $dayTests = $tests[$dateStr];
-                                    if (is_array($dayTests)) {
-                                        $ft = $dayTests[0] ?? null;
-                                        $testNum = $ft['teste'] ?? $ft['titulo'] ?? $ft['tarefa_de'] ?? null;
-                                    } else {
-                                        $ft = $dayTests->first();
-                                        $testNum = $ft->teste ?? $ft->titulo ?? $ft->tarefa_de ?? null;
-                                    }
-                                @endphp
-                                @if($testNum)
-                                    <span class="test-badge">Teste da Tarefa: {{ Str::limit($testNum, 30) }}</span>
-                                @endif
-                            @endif
-                        </a>
+                    @php 
+                        $dateKey = $day->format('Y-m-d'); 
+                        // Pega as notas do banco e os testes da sessão
+                        $dayNotes = $notesCollection->get($dateKey, []);
+                        $dayTests = $previewTests[$dateKey] ?? [];
+                    @endphp
+                    <td class="cell-link" data-date="{{ $dateKey }}">
+                        <span class="day-number">{{ $day->day }}</span>
+                        <div class="cell-content">
+                            {{-- Mostra as Notas (Roxo) --}}
+                            @foreach($dayNotes as $note)
+                                <div class="note-preview">
+                                    {{ $note->title ?: \Illuminate\Support\Str::limit($note->content, 20) }}
+                                </div>
+                            @endforeach
+                            
+                            {{-- Mostra os Testes (Azul) --}}
+                            @foreach($dayTests as $test)
+                                <div class="test-preview">
+                                    {{ $test['titulo'] ?? $test['tarefa_de'] ?? 'Teste' }}
+                                </div>
+                            @endforeach
+                        </div>
                     </td>
                 @endforeach
             </tr>
-        @endforeach
+            @endforeach
         </tbody>
     </table>
 </div>
 
-<!-- Modal -->
 <div id="noteModal" class="modal">
-    <div class="card">
-        <h3 id="modalDate">Date</h3>
-        <div id="noteList" style="max-height:160px;overflow:auto;margin-bottom:8px;color:#ddd"></div>
-        <input id="noteTitle" placeholder="Título da nota" style="width:100%;padding:8px;margin-bottom:8px;background:#111;color:#fff;border:1px solid #333" />
-        <textarea id="noteContent" placeholder="Escreva o conteúdo da nota (opcional)..." style="height:140px"></textarea>
-        <div style="margin-top:12px;text-align:right">
-            <button id="saveBtn">Salvar</button>
-            <button id="closeBtn">Fechar</button>
-        </div>
-    </div>
-</div>
-
-<!-- Choice Modal -->
-<div id="choiceModal" class="modal">
-    <div class="card">
-        <h3 id="choiceDate">Escolha ação</h3>
-        <div id="choicePreviews" style="margin-top:12px;color:#ddd;max-height:220px;overflow:auto"></div>
-        <div style="margin-top:12px">
-            <button id="openNoteBtn">Adicionar nota</button>
-            <button id="choiceCloseBtn" style="margin-left:8px">Cancelar</button>
+    <div class="modal-content">
+        <span class="close" id="closeModal">&times;</span>
+        <h2 id="modalDateTitle" style="margin-top:0">Notas</h2>
+        <div id="noteList" style="margin-bottom: 20px; max-height: 200px; overflow-y: auto;"></div>
+        <input type="text" id="noteTitle" placeholder="Título da nota (opcional)">
+        <textarea id="noteContent" rows="4" placeholder="Conteúdo da nota..."></textarea>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <a id="addTestChoice" href="#" style="color: #4a9eff; text-decoration: none; font-size: 14px;">+ Adicionar Teste</a>
+            <button id="saveNoteBtn" class="save-btn">Salvar Nota</button>
         </div>
     </div>
 </div>
 
 <script>
-// --- FUNÇÕES AUXILIARES ---
-function truncate(str, n) {
-    if (!str) return '';
-    return (str.length > n) ? str.substr(0, n - 1) + '...' : str;
-}
+    const modal = document.getElementById('noteModal');
+    const closeBtn = document.getElementById('closeModal');
+    const saveBtn = document.getElementById('saveNoteBtn');
+    const noteList = document.getElementById('noteList');
+    const searchInput = document.getElementById('globalSearch');
+    const searchResults = document.getElementById('searchResults');
+    let editingDate = null;
+    let editingNoteId = null;
 
-function highlight(text, term) {
-    if (!term || !text) return text;
-    const regex = new RegExp(`(${term})`, 'gi');
-    return text.replace(regex, '<mark style="background: #ffeb3b; color: #000; padding: 0 2px; border-radius: 2px;">$1</mark>');
-}
-
-// --- VARIÁVEIS DO MODAL (JÁ EXISTENTES) ---
-const modal = document.getElementById('noteModal');
-const closeBtn = document.querySelector('.close');
-const saveBtn = document.getElementById('saveNoteBtn');
-const noteContent = document.getElementById('noteContent');
-const noteList = document.getElementById('noteList');
-let editingDate = null;
-let editingNoteId = null;
-
-// --- LÓGICA DE BUSCA (CTRL + F) ---
-const searchInput = document.getElementById('globalSearch');
-const searchResults = document.getElementById('searchResults');
-
-if (searchInput) {
-    searchInput.addEventListener('input', async (e) => {
-        const q = e.target.value;
-        if (q.length < 2) {
-            searchResults.style.display = 'none';
-            return;
-        }
-
-        try {
-            const res = await fetch(`/search?q=${encodeURIComponent(q)}`);
-            const data = await res.json();
-            const all = [...(data.notes || []), ...(data.tests || [])];
-
-            if (all.length === 0) {
-                searchResults.innerHTML = '<div style="padding:15px; color:#666;">Nenhum texto encontrado.</div>';
-            } else {
-                searchResults.innerHTML = all.map(item => {
-                    const cleanContent = item.excerpt ? item.excerpt.replace(/<[^>]*>?/gm, '') : '';
-                    const highlightedText = highlight(truncate(cleanContent, 100), q);
-
-                    return `
-                        <div onclick="goToResult('${item.date}', ${item.type === 'Teste'}, '${item.id || ''}')" 
-                             style="padding: 12px; border-bottom: 1px solid #222; cursor: pointer; background: #0a0a0a;"
-                             onmouseover="this.style.background='#151515'" onmouseout="this.style.background='#0a0a0a'">
-                            <div style="display:flex; justify-content:space-between; margin-bottom: 4px;">
-                                <small style="color:${item.type === 'Teste' ? '#4a9eff' : '#a37bcc'}; font-weight:bold; font-size:10px;">${item.type.toUpperCase()}</small>
-                                <small style="color:#444; font-size:10px;">${item.date}</small>
-                            </div>
-                            <div style="color:#fff; font-size:13px; font-weight:bold; margin-bottom:4px;">${item.title}</div>
-                            <div style="color:#888; font-size:12px; line-height:1.4;">
-                                ...${highlightedText}...
-                            </div>
-                        </div>`;
-                }).join('');
-            }
-            searchResults.style.display = 'block';
-        } catch (err) {
-            console.error("Erro na busca:", err);
-        }
-    });
-}
-
-// Fechar busca ao clicar fora
-document.addEventListener('click', (e) => {
-    if (searchResults && !e.target.closest('.search-container')) {
-        searchResults.style.display = 'none';
-    }
-});
-
-// Ir para o resultado
-window.goToResult = function(date, isTest, id) {
-    searchResults.style.display = 'none';
-    searchInput.value = '';
-    if (isTest && id) {
-        window.location.href = `/task-test/${id}/edit`;
-    } else {
-        const cell = document.querySelector(`.cell-link[data-date="${date}"]`);
-        if (cell) cell.click();
-    }
-};
-
-// --- RESTO DAS FUNÇÕES DO CALENDÁRIO (MANTER) ---
-async function openModal(date) {
-    editingDate = date;
-    editingNoteId = null;
-    document.getElementById('modalDateTitle').innerText = 'Notas: ' + date;
-    document.getElementById('noteTitle').value = '';
-    noteContent.value = '';
-    
-    const choiceLink = document.getElementById('addTestChoice');
-    if(choiceLink) choiceLink.href = `/task-test/${date}`;
-
-    await loadNoteList(date);
-    modal.style.display = 'block';
-}
-
-async function loadNoteList(date) {
-    const res = await fetch(`/notes/${date}`);
-    const data = await res.json();
-    noteList.innerHTML = '';
-    data.notes.forEach(n => {
-        const div = document.createElement('div');
-        div.className = 'note-item';
-        div.dataset.id = n.id;
-        div.innerHTML = `
-            <div class="note-handle">::</div>
-            <div style="flex:1" onclick="editNote(${n.id}, '${n.title||''}', \`${n.content||''}\`)">
-                <strong>${n.title || '(Sem título)'}</strong>
-            </div>
-            <button class="delete-note-btn" onclick="deleteNote(${n.id})">Excluir</button>
-        `;
-        noteList.appendChild(div);
-    });
-}
-
-function editNote(id, title, content) {
-    editingNoteId = id;
-    document.getElementById('noteTitle').value = title;
-    noteContent.value = content;
-}
-
-async function deleteNote(id) {
-    if(!confirm('Excluir esta nota?')) return;
-    const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-    const res = await fetch(`/note/${id}`, { method: 'DELETE', headers: {'X-CSRF-TOKEN': token} });
-    if(res.ok) await loadNoteList(editingDate);
-}
-
-// Event Listeners básicos
-document.querySelectorAll('.cell-link').forEach(link => {
-    link.addEventListener('click', (e) => {
-        if(e.target.closest('.preview-test-link')) return;
-        openModal(link.dataset.date);
-    });
-});
-
-closeBtn.onclick = () => { modal.style.display = "none"; };
-window.onclick = (event) => { if (event.target == modal) modal.style.display = "none"; };
-
-saveBtn.addEventListener('click', async () => {
-    if (!editingDate) return;
-    const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-    const payload = { title: document.getElementById('noteTitle').value, content: noteContent.value };
-    if (editingNoteId) payload.note_id = editingNoteId;
-    
-    const res = await fetch(`/note/${editingDate}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': token },
-        body: JSON.stringify(payload)
-    });
-    if (res.ok) {
+    async function openModal(date) {
+        editingDate = date;
         editingNoteId = null;
+        document.getElementById('modalDateTitle').innerText = 'Notas: ' + date;
         document.getElementById('noteTitle').value = '';
-        noteContent.value = '';
-        await loadNoteList(editingDate);
+        document.getElementById('noteContent').value = '';
+        document.getElementById('addTestChoice').href = `/task-test/${date}`;
+        await loadNoteList(date);
+        modal.style.display = 'flex';
     }
-});
-</script>
 
+    async function loadNoteList(date) {
+        const res = await fetch(`/notes/${date}`);
+        const data = await res.json();
+        noteList.innerHTML = '';
+        if (data.notes) {
+            data.notes.forEach(n => {
+                const div = document.createElement('div');
+                div.className = 'note-item';
+                div.innerHTML = `
+                    <div style="flex:1; cursor:pointer" onclick="editNote(${n.id}, '${n.title||''}', \`${n.content||''}\`)">
+                        <strong>${n.title || '(Sem título)'}</strong>
+                    </div>
+                    <button onclick="deleteNote(${n.id})" style="background:none; border:none; color:#f44; cursor:pointer;">Excluir</button>
+                `;
+                noteList.appendChild(div);
+            });
+        }
+    }
+
+    window.editNote = (id, title, content) => {
+        editingNoteId = id;
+        document.getElementById('noteTitle').value = title;
+        document.getElementById('noteContent').value = content;
+    };
+
+    window.deleteNote = async (id) => {
+        if (!confirm('Deseja excluir esta nota?')) return;
+        const token = document.querySelector('meta[name="csrf-token"]').content;
+        await fetch(`/note/${id}`, { method: 'DELETE', headers: {'X-CSRF-TOKEN': token} });
+        loadNoteList(editingDate);
+    };
+
+    saveBtn.onclick = async () => {
+        const title = document.getElementById('noteTitle').value;
+        const content = document.getElementById('noteContent').value;
+        const token = document.querySelector('meta[name="csrf-token"]').content;
+        
+        const res = await fetch(`/note/${editingDate}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRF-TOKEN': token},
+            body: JSON.stringify({ title, content, note_id: editingNoteId })
+        });
+        
+        if (res.ok) {
+            window.location.reload(); // Recarrega para atualizar os previews roxinhos no calendário
+        }
+    };
+
+    document.querySelectorAll('.cell-link').forEach(cell => {
+        cell.onclick = () => openModal(cell.dataset.date);
+    });
+
+    closeBtn.onclick = () => modal.style.display = 'none';
+    window.onclick = (e) => { if (e.target == modal) modal.style.display = 'none'; };
+
+    searchInput.oninput = async (e) => {
+        const q = e.target.value;
+        if (q.length < 2) { searchResults.style.display = 'none'; return; }
+        const res = await fetch(`/search?q=${encodeURIComponent(q)}`);
+        const data = await res.json();
+        const all = [...(data.notes || []), ...(data.tests || [])];
+        
+        searchResults.innerHTML = all.map(item => `
+            <div class="search-item" onclick="goTo('${item.date}', ${item.type==='Teste'}, '${item.id||''}')">
+                <small style="color:${item.type==='Teste'?'#4a9eff':'#a37bcc'}">${item.type}</small>
+                <div style="font-weight:bold">${item.title}</div>
+            </div>`).join('') || '<div style="padding:10px">Nada encontrado</div>';
+        searchResults.style.display = 'block';
+    };
+
+    window.goTo = (date, isTest, id) => {
+        searchResults.style.display = 'none';
+        if (isTest) window.location.href = `/task-test/${id}/edit`;
+        else openModal(date);
+    };
+</script>
 </body>
 </html>
