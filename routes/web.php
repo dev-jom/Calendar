@@ -4,22 +4,23 @@ use Illuminate\Support\Facades\Route;
 use Carbon\Carbon;
 use App\Models\Note;
 use App\Http\Controllers\NoteController;
+use Illuminate\Http\Request;
 
-Route::get('/', function () {
-    // allow browsing by query params ?month=MM&year=YYYY similar to the preview route
-    $m = request()->get('month');
-    $y = request()->get('year');
-    if ($m && $y) {
-        try {
-            $firstOfMonth = Carbon::createFromDate((int)$y, (int)$m, 1)->startOfMonth();
-        } catch (Exception $e) {
-            $firstOfMonth = Carbon::now()->startOfMonth();
-        }
-    } else {
+Route::get('/', function (Request $request) {
+    // Permite navegar pelos meses via ?month=MM&year=YYYY
+    $m = $request->get('month', date('m'));
+    $y = $request->get('year', date('Y'));
+
+    try {
+        $firstOfMonth = Carbon::createFromDate((int)$y, (int)$m, 1)->startOfMonth();
+    } catch (Exception $e) {
         $firstOfMonth = Carbon::now()->startOfMonth();
     }
-    $start = (clone $firstOfMonth)->startOfWeek();
+
+    $start = (clone $firstOfMonth)->startOfWeek(Carbon::SUNDAY);
     $weeks = [];
+    
+    // Gera 6 semanas para garantir que o calendário sempre fique preenchido
     for ($w = 0; $w < 6; $w++) {
         $week = [];
         for ($d = 0; $d < 7; $d++) {
@@ -27,62 +28,39 @@ Route::get('/', function () {
         }
         $weeks[] = $week;
     }
+
     $startDate = $weeks[0][0]->format('Y-m-d');
     $endDate = $weeks[5][6]->format('Y-m-d');
-    $notesCollection = Note::whereBetween('date', [$startDate, $endDate])->orderBy('date')->orderBy('order')->orderBy('created_at')->get()->groupBy(function($n){ return $n->date->format('Y-m-d'); });
-    $notes = $notesCollection->toArray();
-    $tests = session('preview_tests', []);
-    return view('calendar', compact('firstOfMonth','weeks','notes','tests'));
+
+    // BUSCA AS NOTAS NO BANCO
+    $notesCollection = Note::whereBetween('date', [$startDate, $endDate])
+        ->orderBy('date')
+        ->orderBy('order')
+        ->orderBy('created_at')
+        ->get()
+        ->groupBy(function($n){ 
+            // Garante que a chave do grupo seja a string Y-m-d
+            return is_string($n->date) ? $n->date : $n->date->format('Y-m-d'); 
+        });
+
+    // TESTES ARMAZENADOS NA SESSÃO
+    $previewTests = session('preview_tests', []);
+
+    // IMPORTANTE: O nome no compact deve ser 'notesCollection' para bater com o Blade
+    return view('calendar', compact('firstOfMonth', 'weeks', 'notesCollection', 'previewTests'));
 });
 
 // Rota de busca global
 Route::get('/search', [NoteController::class, 'search'])->name('notes.search');
 
-// Preview routes to view the new blades locally
-Route::get('/preview/calendar', function () {
-    // allow browsing by query params ?month=MM&year=YYYY for preview
-    $m = request()->get('month');
-    $y = request()->get('year');
-    if ($m && $y) {
-        try {
-            $firstOfMonth = Carbon::createFromDate((int)$y, (int)$m, 1)->startOfMonth();
-        } catch (Exception $e) {
-            $firstOfMonth = Carbon::now()->startOfMonth();
-        }
-    } else {
-        $firstOfMonth = Carbon::now()->startOfMonth();
-    }
-    $start = (clone $firstOfMonth)->startOfWeek();
-    $weeks = [];
-    for ($w = 0; $w < 6; $w++) {
-        $week = [];
-        for ($d = 0; $d < 7; $d++) {
-            $week[] = (clone $start)->addDays($w * 7 + $d);
-        }
-        $weeks[] = $week;
-    }
-    // load notes from database for the month so saved items persist
-    $startDate = $weeks[0][0]->format('Y-m-d');
-    $endDate = $weeks[5][6]->format('Y-m-d');
-    $notesCollection = Note::whereBetween('date', [$startDate, $endDate])->orderBy('date')->orderBy('order')->orderBy('created_at')->get()->groupBy(function($n){ return $n->date->format('Y-m-d'); });
-    $notes = $notesCollection->toArray();
-    $tests = session('preview_tests', []);
-    return view('calendar', compact('firstOfMonth','weeks','notes','tests'));
-})->name('calendar.index');
-
-Route::get('/preview/task-test/{date}', function ($date) {
-    $task = null;
-    return view('task_test', ['date' => $date, 'task' => $task]);
-});
-
-// Notes API (persistent) using NoteController
-Route::get('/note/{date}', [NoteController::class, 'byDate']);
+// API de Notas (Persistente no DBeaver/Banco)
+Route::get('/notes/{date}', [NoteController::class, 'byDate']); // Ajustado para bater com o fetch do JS
 Route::get('/note/{date}/{id}', [NoteController::class, 'show']);
 Route::post('/note/{date}', [NoteController::class, 'store']);
 Route::delete('/note/{id}', [NoteController::class, 'destroy']);
 Route::post('/notes/reorder-all', [NoteController::class, 'reorderAll']);
 
-// Preview API for task-tests (stored in session)
+// API de Testes (Temporário em Sessão)
 Route::post('/task-test/{date}', function ($date) {
     $data = request()->all();
     $tests = session('preview_tests', []);
@@ -91,43 +69,8 @@ Route::post('/task-test/{date}', function ($date) {
     $task = array_merge(['id' => $id, 'created_at' => now()->toDateTimeString()], $data);
     $tests[$date][] = $task;
     session(['preview_tests' => $tests]);
-    return redirect()->route('calendar.index');
+    return redirect('/');
 })->name('task_test.store');
-
-Route::put('/task-test/{id}', function ($id) {
-    $data = request()->all();
-    $tests = session('preview_tests', []);
-    foreach ($tests as $date => &$list) {
-        foreach ($list as &$t) {
-            if ((string)($t['id'] ?? '') === (string)$id) {
-                $t = array_merge($t, $data);
-                session(['preview_tests' => $tests]);
-                return redirect()->route('calendar.index');
-            }
-        }
-        unset($t);
-    }
-    abort(404, 'Test not found');
-})->name('task_test.update');
-
-Route::delete('/task-test/{id}', function ($id) {
-    $tests = session('preview_tests', []);
-    $found = false;
-    foreach ($tests as $date => $list) {
-        foreach ($list as $i => $t) {
-            if ((string)($t['id'] ?? '') === (string)$id) {
-                array_splice($tests[$date], $i, 1);
-                $found = true;
-                break 2;
-            }
-        }
-    }
-    if ($found) {
-        session(['preview_tests' => $tests]);
-        return response()->json(['ok' => true]);
-    }
-    abort(404, 'Test not found');
-});
 
 Route::get('/task-test/{id}/edit', function ($id) {
     $tests = session('preview_tests', []);
@@ -140,3 +83,19 @@ Route::get('/task-test/{id}/edit', function ($id) {
     }
     abort(404, 'Test not found');
 });
+
+// Outras rotas de teste (Update/Delete)
+Route::put('/task-test/{id}', function ($id) {
+    $data = request()->all();
+    $tests = session('preview_tests', []);
+    foreach ($tests as $date => &$list) {
+        foreach ($list as &$t) {
+            if ((string)($t['id'] ?? '') === (string)$id) {
+                $t = array_merge($t, $data);
+                session(['preview_tests' => $tests]);
+                return redirect('/');
+            }
+        }
+    }
+    abort(404);
+})->name('task_test.update');
